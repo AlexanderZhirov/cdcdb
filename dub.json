@@ -1,0 +1,38 @@
+{
+	"authors": [
+		"Alexander Zhirov"
+	],
+	"copyright": "Copyright © 2025, Alexander Zhirov",
+	"description": "A CDC Approach for Storing Chunks in an SQLite Database.",
+	"license": "BSL-1.0",
+	"name": "cdcdb",
+	"dependencies": {
+		"arsd-official:sqlite": "~>12.0.0",
+		"zstd": "~>0.2.1"
+	},
+	"stringImportPaths": [
+		"source/cdcdb/db",
+		"source/cdcdb/cdc"
+	],
+	"configurations": [
+		{
+			"name": "static",
+			"targetType": "staticLibrary",
+			"targetPath": "lib",
+			"sourcePaths": ["source"]
+		},
+		{
+			"name": "dynamic",
+			"targetType": "dynamicLibrary",
+			"targetPath": "lib",
+			"sourcePaths": ["source"]
+		},
+		{
+			"name": "binary",
+			"targetType": "executable",
+			"targetPath": "bin",
+			"mainSourceFile": "test/app.d",
+			"sourcePaths": ["source", "test"]
+		}
+	]
+}

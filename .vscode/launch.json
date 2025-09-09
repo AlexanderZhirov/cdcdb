@@ -1,0 +1,37 @@
+{
+	// Используйте IntelliSense, чтобы узнать о возможных атрибутах.
+	// Наведите указатель мыши, чтобы просмотреть описания существующих атрибутов.
+	// Для получения дополнительной информации посетите: https://go.microsoft.com/fwlink/?linkid=830387
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"type": "code-d",
+			"request": "launch",
+			"dubBuild": true,
+			"name": "Build & Debug DUB project",
+			"cwd": "${command:dubWorkingDirectory}",
+			"program": "bin/${command:dubTarget}",
+			"args": []
+		},
+		{
+			"name": "Debug D Program with sudo-gdb",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/bin/dwatch",
+			"args": ["-d", "/tmp/scripts"], // Аргументы командной строки для программы, если нужны
+			"stopAtEntry": false, // Остановить на входе в main
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"miDebuggerPath": "/usr/bin/sudo-gdb", // Путь к вашему скрипту
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				}
+			]
+		}
+	]
+}

@@ -1,0 +1,7 @@
+{
+	"fileVersion": 1,
+	"versions": {
+		"arsd-official": "12.0.0",
+		"zstd": "0.2.1"
+	}
+}
