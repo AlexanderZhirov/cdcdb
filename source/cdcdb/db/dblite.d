@@ -9,6 +9,11 @@ private:
 	string _dbPath;
 	// _scheme
 	mixin(import("scheme.d"));
+
+	SqliteResult sql(T...)(string queryText, T args)
+	{
+		return cast(SqliteResult) query(queryText, args);
+	}
 public:
 	this(string database)
 	{
@@ -40,8 +45,5 @@ public:
 		query("ROLLBACK");
 	}
 
-	SqliteResult sql(T...)(string queryText, T args)
-	{
-		return cast(SqliteResult) query(queryText, args);
-	}
+	// findFile()
 }
