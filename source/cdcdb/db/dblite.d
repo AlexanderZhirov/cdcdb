@@ -103,7 +103,7 @@ public:
 				ON CONFLICT (sha256) DO NOTHING
 			},
 			blob.sha256[],
-			blob.zSize ? blob.zSha256[] : null,
+			blob.zstd ? blob.zSha256[] : null,
 			blob.size,
 			blob.zSize,
 			blob.content,
@@ -187,97 +187,71 @@ public:
 
 	// // --- чтение ---
 
-	// Snapshot getSnapshot(long id)
-	// {
-	// 	auto queryResult = sql(
-	// 		q{
-	// 			SELECT id, file_path, file_sha256, label, created_utc, source_length,
-	// 				algo_min, algo_normal, algo_max, mask_s, mask_l, status
-	// 			FROM snapshots WHERE id = ?
-	// 		}, id);
+	Snapshot[] getSnapshots(string filePath)
+	{
+		auto queryResult = sql(
+			q{
+				SELECT id, file_path, file_sha256, label, created_utc, source_length,
+					algo_min, algo_normal, algo_max, mask_s, mask_l, status
+				FROM snapshots WHERE file_path = ?
+			}, filePath
+		);
 
-	// 	Snapshot s;
-	// 	bool found = false;
-	// 	foreach (row; queryResult)
-	// 	{
-	// 		s.id = row[0].to!long;
-	// 		s.file_path = row[1].to!string;
-	// 		s.label = row[2].to!string;
-	// 		s.created_utc = row[3].to!string;
-	// 		s.source_length = row[4].to!long;
-	// 		s.algo_min = row[5].to!long;
-	// 		s.algo_normal = row[6].to!long;
-	// 		s.algo_max = row[7].to!long;
-	// 		s.mask_s = row[8].to!long;
-	// 		s.mask_l = row[9].to!long;
-	// 		s.status = cast(SnapshotStatus) row[10].to!int;
-	// 		found = true;
-	// 		break;
-	// 	}
-	// 	enforce(found, "getSnapshot: not found");
-	// 	return s;
-	// }
+		Snapshot[] snapshots;
+		// bool found = false;
+		foreach (row; queryResult)
+		{
+			Snapshot snapshot;
 
-	// SnapshotChunk[] getSnapshotChunks(long snapshotId)
-	// {
-	// 	auto r = sql(q{
-	// 		SELECT snapshot_id,chunk_index,COALESCE(offset,0),size,sha256
-	// 		FROM snapshot_chunks
-	// 		WHERE snapshot_id=? ORDER BY chunk_index
-	// 	}, snapshotId);
+			snapshot.id = row["id"].to!long;
+			snapshot.filePath = row["file_path"].to!string;
+			snapshot.fileSha256 = cast(ubyte[]) row["file_sha256"].dup;
+			snapshot.label = row["label"].to!string;
+			snapshot.createdUtc = row["created_utc"].to!string;
+			snapshot.sourceLength = row["source_length"].to!long;
+			snapshot.algoMin = row["algo_min"].to!long;
+			snapshot.algoNormal = row["algo_normal"].to!long;
+			snapshot.algoMax = row["algo_max"].to!long;
+			snapshot.maskS = row["mask_s"].to!long;
+			snapshot.maskL = row["mask_l"].to!long;
+			snapshot.status = cast(SnapshotStatus)row["status"].to!int;
+			// found = true;
+			snapshots ~= snapshot;
+		}
+		// enforce(found, "getSnapshot: not found");
+		return snapshots;
+	}
 
-	// 	auto acc = appender!SnapshotChunk[];
-	// 	foreach (row; r)
-	// 	{
-	// 		SnapshotChunk ch;
-	// 		ch.snapshot_id = row[0].to!long;
-	// 		ch.chunk_index = row[1].to!long;
-	// 		ch.offset = row[2].to!long;
-	// 		ch.size = row[3].to!long;
+	SnapshotDataChunk[] getChunks(long snapshotId) {
+		auto queryResult = sql(
+			q{
+				SELECT sc.chunk_index, sc.offset, sc.size,
+					b.content, b.zstd, b.z_size, b.sha256, b.z_sha256
+				FROM snapshot_chunks sc
+				JOIN blobs b ON b.sha256 = sc.sha256
+				WHERE sc.snapshot_id = ?
+				ORDER BY sc.chunk_index
+			}, snapshotId
+		);
 
-	// 		const(ubyte)[] sha = cast(const(ubyte)[]) row[4];
-	// 		enforce(sha.length == 32, "getSnapshotChunks: sha256 blob length != 32");
-	// 		ch.sha256[] = sha[];
+		SnapshotDataChunk[] sdchs;
 
-	// 		acc.put(ch);
-	// 	}
-	// 	return acc.data;
-	// }
+		foreach (row; queryResult)
+		{
+			SnapshotDataChunk sdch;
 
-	// /// Вариант без `out`: вернуть Nullable
-	// Nullable!Snapshot maybeGetSnapshotByLabel(string label)
-	// {
-	// 	auto r = sql(q{
-	// 		SELECT id,file_path,label,created_utc,source_length,
-	// 			algo_min,algo_normal,algo_max,mask_s,mask_l,status
-	// 		FROM snapshots
-	// 		WHERE label=? ORDER BY id DESC LIMIT 1
-	// 	}, label);
+			sdch.chunkIndex = row["chunk_index"].to!long;
+			sdch.offset = row["offset"].to!long;
+			sdch.size = row["size"].to!long;
+			sdch.content = cast(ubyte[]) row["content"].dup;
+			sdch.zstd = cast(bool) row["zstd"].to!int;
+			sdch.zSize = row["z_size"].to!long;
+			sdch.sha256 = cast(ubyte[]) row["sha256"].dup;
+			sdch.zSha256 = cast(ubyte[]) row["z_sha256"].dup;
 
-	// 	foreach (row; r)
-	// 	{
-	// 		Snapshot s;
-	// 		s.id = row[0].to!long;
-	// 		s.file_path = row[1].to!string;
-	// 		s.label = row[2].to!string;
-	// 		s.created_utc = row[3].to!string;
-	// 		s.source_length = row[4].to!long;
-	// 		s.algo_min = row[5].to!long;
-	// 		s.algo_normal = row[6].to!long;
-	// 		s.algo_max = row[7].to!long;
-	// 		s.mask_s = row[8].to!long;
-	// 		s.mask_l = row[9].to!long;
-	// 		s.status = cast(SnapshotStatus) row[10].to!int;
-	// 		return typeof(return)(s); // Nullable!Snapshot(s)
-	// 	}
-	// 	return typeof(return).init; // null/empty
-	// }
+			sdchs ~= sdch;
+		}
 
-	// /// Или жёсткий вариант: вернуть/кинуть
-	// Snapshot getSnapshotByLabel(string label)
-	// {
-	// 	auto m = maybeGetSnapshotByLabel(label);
-	// 	enforce(!m.isNull, "getSnapshotByLabel: not found");
-	// 	return m.get;
-	// }
+		return sdchs;
+	}
 }

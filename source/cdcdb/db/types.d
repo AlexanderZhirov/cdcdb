@@ -43,3 +43,14 @@ struct SnapshotChunk
 	long size;
 	ubyte[32] sha256; // BLOB(32)
 }
+
+struct SnapshotDataChunk {
+	long chunkIndex;
+	long offset;
+	long size;
+	ubyte[] content;
+	bool zstd;
+	long zSize;
+	ubyte[32] sha256;
+	ubyte[32] zSha256;
+}

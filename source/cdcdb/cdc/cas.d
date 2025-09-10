@@ -8,6 +8,12 @@ import std.format : format;
 
 import zstd;
 
+import std.exception : enforce;
+import std.stdio : writeln;
+import std.conv : to;
+
+import std.file : write;
+
 // CAS-хранилище (Content-Addressable Storage) со снапшотами
 final class CAS
 {
@@ -26,7 +32,6 @@ public:
 		ubyte[32] hashSource = digest!SHA256(data);
 		// Сделать запрос в БД по filePath и сверить хеш файлов
 
-		import std.stdio : writeln;
 		// writeln(hashSource.length);
 		
 
@@ -85,5 +90,32 @@ public:
 		// Записать манифест в БД
 		// Вернуть ID манифеста
 		return 0;
+	}
+
+	void restoreSnapshot()
+	{
+		string restoreFile = "/tmp/restore.d";
+
+		foreach (Snapshot snapshot; _db.getSnapshots("/tmp/text")) {
+			auto dataChunks = _db.getChunks(snapshot.id);
+			ubyte[] content;
+
+			foreach (SnapshotDataChunk chunk; dataChunks) {
+				ubyte[] bytes;
+				if (chunk.zstd) {
+					enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
+					bytes = cast(ubyte[]) uncompress(chunk.content);
+				} else {
+					bytes = chunk.content;
+				}
+				enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
+
+				content ~= bytes;
+			}
+
+			enforce(snapshot.fileSha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
+
+			write(snapshot.filePath ~ snapshot.id.to!string, content);
+		}
 	}
 }
