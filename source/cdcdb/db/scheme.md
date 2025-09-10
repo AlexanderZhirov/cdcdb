@@ -149,3 +149,49 @@ sequenceDiagram
         APP-->>APP: Фиксирует ошибку (несоответствие сумм)
     end
 ```
+
+## Схема записи в БД
+
+```mermaid
+sequenceDiagram
+  autonumber
+  participant APP as Приложение
+  participant DB as SQLite
+  participant CH as Разбиение (FastCDC)
+  participant HS as SHA-256
+
+  Note over APP,DB: Подготовка к записи
+  APP->>DB: PRAGMA foreign_keys=ON
+  APP->>DB: BEGIN IMMEDIATE
+
+  Note over APP,DB: Метаданные снимка
+  APP->>DB: INSERT INTO snapshots(..., status='pending')
+  DB-->>APP: snap_id := last_insert_rowid()
+
+  Note over APP,CH: Поток файла → чанки (min/normal/max, mask_s/mask_l)
+  loop Для каждого чанка по порядку
+    CH-->>APP: {chunk_index, offset, size, bytes}
+
+    Note over APP,HS: Хеширование
+    APP->>HS: SHA-256(bytes)
+    HS-->>APP: sha256 (32 байта)
+
+    Note over APP,DB: Дедупликация содержимого
+    APP->>DB: INSERT INTO blobs(sha256,size,content) ON CONFLICT DO NOTHING
+    DB-->>APP: OK (новая строка или уже была)
+
+    Note over APP,DB: Привязка к снимку
+    APP->>DB: INSERT INTO snapshot_chunks(snapshot_id,chunk_index,offset,size,sha256)
+    DB-->>APP: OK (триггер ++refcount, last_seen_utc=now)
+  end
+
+  Note over APP,DB: Валидация и финал
+  APP->>DB: SELECT SUM(size) FROM snapshot_chunks WHERE snapshot_id = snap_id
+  DB-->>APP: total_size
+  alt total_size == snapshots.source_length
+    Note over DB: триггер mark_ready ставит status='ready'
+    APP->>DB: COMMIT
+  else несовпадение / ошибка
+    APP->>DB: ROLLBACK
+  end
+```

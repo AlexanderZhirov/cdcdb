@@ -10,6 +10,8 @@ auto _scheme = [
 			-- Путь к исходному файлу, для удобства навигации/поиска.
 			file_path TEXT,
 
+			file_sha256 BLOB NOT NULL CHECK (length(file_sha256) = 32),
+
 			-- Произвольная метка/название снимка (для человека).
 			label TEXT,
 
@@ -31,9 +33,10 @@ auto _scheme = [
 			mask_l INTEGER NOT NULL,
 
 			-- Состояние снимка:
-			-- "pending" - метаданные созданы, состав не полностью загружен;
-			-- "ready"	- все чанки привязаны, снимок готов к использованию.
-			status TEXT NOT NULL DEFAULT "pending" CHECK (status IN ("pending","ready"))
+			-- 0 - "pending" - метаданные созданы, состав не полностью загружен;
+			-- 1 - "ready"	- все чанки привязаны, снимок готов к использованию.
+			status INTEGER NOT NULL DEFAULT 0
+				CHECK (typeof(status) = "integer" AND status IN (0,1))
 		)
 	},
 	q{
@@ -41,29 +44,45 @@ auto _scheme = [
 		-- Уникальные куски содержимого (дедупликация по sha256)
 		-- ------------------------------------------------------------
 		CREATE TABLE IF NOT EXISTS blobs (
-			-- Хэш содержимого чанка. Обеспечивает уникальность контента.
-			-- Храним как BLOB(32) (сырые 32 байта SHA-256), а не hex-строку.
+			-- Хэш содержимого чанка. Храним как BLOB(32) (сырые 32 байта SHA-256).
 			sha256 BLOB PRIMARY KEY CHECK (length(sha256) = 32),
 
-			-- Размер чанка в байтах. Должен совпадать с длиной content.
+			-- Хэш сжатого содержимого (если zstd=1). Может быть NULL при zstd=0.
+			z_sha256 BLOB,
+
+			-- Размер чанка в байтах (до сжатия).
 			size INTEGER NOT NULL,
 
-			-- Сырые байты чанка.
+			-- Размер сжатого чанка (в байтах). Можно держать NOT NULL и заполнять =size при zstd=0,
+			-- либо сделать NULL при zstd=0 (см. CHECK ниже допускает NULL).
+			z_size INTEGER,
+
+			-- Сырые байты: при zstd=1 здесь лежит сжатый блок, иначе - исходные байты.
 			content BLOB NOT NULL,
 
-			-- Момент, когда этот контент впервые появился в базе (UTC).
-			created_utc	TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
-
-			-- Последний раз, когда на контент сослались (для аналитики/GC).
+			-- Таймштампы
+			created_utc   TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 			last_seen_utc TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 
-			-- Счётчик ссылок: сколько строк в snapshot_chunks ссылаются на этот sha256.
-			-- Используется для безопасного удаления неиспользуемых blob-ов.
+			-- Счётчик ссылок из snapshot_chunks
 			refcount INTEGER NOT NULL DEFAULT 0,
+
+			-- Флаг сжатия: 0 - без сжатия; 1 - zstd
+			zstd INTEGER NOT NULL DEFAULT 0
+				CHECK (typeof(zstd) = "integer" AND zstd IN (0,1)),
 
 			-- Дополнительные гарантии целостности:
 			CHECK (refcount >= 0),
-			CHECK (size = length(content))
+
+			-- Если zstd=1, длина content должна равняться z_size;
+			-- если zstd=0 - длина content должна равняться size.
+			CHECK (
+				(zstd = 1 AND z_size IS NOT NULL AND length(content) = z_size)
+			OR (zstd = 0 AND length(content) = size )
+			),
+
+			-- Согласованность z_sha256 (если задан)
+			CHECK (z_sha256 IS NULL OR length(z_sha256) = 32)
 		)
 	},
 	q{
@@ -105,6 +124,10 @@ auto _scheme = [
 				ON UPDATE RESTRICT
 				ON DELETE RESTRICT
 		)
+	},
+	q{
+		CREATE INDEX IF NOT EXISTS idx_snapshots_path_sha
+			ON snapshots(file_path, file_sha256)
 	},
 	q{
 		-- Быстрый выбор всех чанков конкретного снимка (частый запрос).
@@ -172,15 +195,15 @@ auto _scheme = [
 		END
 	},
 	q{
-		-- Автоматическая смена статуса снимка на "ready",
+		-- Автоматическая смена статуса снимка на 1 - "ready",
 		-- когда сумма размеров его чанков стала равна source_length.
 		-- Примечание: простая эвристика; если потом удалишь/поменяешь чанки,
-		-- триггер ниже вернёт статус обратно на "pending".
+		-- триггер ниже вернёт статус обратно на 0 - "pending".
 		CREATE TRIGGER IF NOT EXISTS trg_snapshots_mark_ready
 		AFTER INSERT ON snapshot_chunks
 		BEGIN
 		UPDATE snapshots
-			SET status = "ready"
+			SET status = 1
 		WHERE id = NEW.snapshot_id
 			AND (SELECT COALESCE(SUM(size),0)
 					FROM snapshot_chunks
@@ -189,13 +212,13 @@ auto _scheme = [
 		END
 	},
 	q{
-		-- При удалении любого чанка снимок снова помечается как "pending".
-		-- Это простой безопасный фоллбэк; следующая вставка приравняет суммы и вернёт "ready".
+		-- При удалении любого чанка снимок снова помечается как 0 - "pending".
+		-- Это простой безопасный фоллбэк; следующая вставка приравняет суммы и вернёт 1 - "ready".
 		CREATE TRIGGER IF NOT EXISTS trg_snapshots_mark_pending
 		AFTER DELETE ON snapshot_chunks
 		BEGIN
 		UPDATE snapshots
-			SET status = "pending"
+			SET status = 0
 		WHERE id = OLD.snapshot_id;
 		END
 	}
