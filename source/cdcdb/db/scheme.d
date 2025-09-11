@@ -170,5 +170,40 @@ auto _scheme = [
 				SET status = 0
 			WHERE id = OLD.snapshot_id;
 		END
+	},
+	q{
+		-- Проверка порядка индексов и непрерывности смещений.
+		CREATE TRIGGER IF NOT EXISTS trg_sc_before_insert
+		BEFORE INSERT ON snapshot_chunks
+		BEGIN
+			-- Ожидаемое значение: max(chunk_index)+1 для данного snapshot_id (или текущий при первой вставке).
+			SELECT CASE
+				WHEN NEW.chunk_index <> COALESCE(
+					(SELECT MAX(chunk_index) FROM snapshot_chunks WHERE snapshot_id = NEW.snapshot_id),
+					NEW.chunk_index - 1
+				) + 1
+				THEN RAISE(ABORT, "snapshot_chunks: индекс chunk_index должен быть непрерывным и только возрастающим")
+			END;
+
+			-- Проверка: offset равен сумме размеров предыдущих чанков.
+			SELECT CASE
+				WHEN NEW.offset <> (
+					SELECT COALESCE(SUM(b.size), 0)
+					FROM snapshot_chunks sc
+					JOIN blobs b ON b.sha256 = sc.sha256
+					WHERE sc.snapshot_id = NEW.snapshot_id
+					AND sc.chunk_index < NEW.chunk_index
+				)
+				THEN RAISE(ABORT, "snapshot_chunks: offset должен равняться сумме размеров предыдущих чанков")
+			END;
+		END
+	},
+	q{
+		-- Запрет обновления строк состава; использовать DELETE + INSERT.
+		CREATE TRIGGER IF NOT EXISTS trg_sc_block_update
+		BEFORE UPDATE ON snapshot_chunks
+		BEGIN
+			SELECT RAISE(ABORT, "snapshot_chunks: UPDATE запрещён; используйте DELETE + INSERT");
+		END
 	}
 ];

@@ -24,11 +24,11 @@ struct Snapshot
 
 struct Blob
 {
-	ubyte[32] sha256; // BLOB(32)
-	ubyte[32] zSha256; // BLOB(32)
+	ubyte[32] sha256;
+	ubyte[32] zSha256;
 	long size;
 	long zSize;
-	ubyte[] content; // BLOB
+	ubyte[] content;
 	string createdUtc;
 	string lastSeenUtc;
 	long refcount;
@@ -40,7 +40,7 @@ struct SnapshotChunk
 	long snapshotId;
 	long chunkIndex;
 	long offset;
-	ubyte[32] sha256; // BLOB(32)
+	ubyte[32] sha256;
 }
 
 struct SnapshotDataChunk {
