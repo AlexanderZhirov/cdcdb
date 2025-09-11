@@ -115,13 +115,12 @@ public:
 	{
 		sql(
 			q{
-				INSERT INTO snapshot_chunks (snapshot_id, chunk_index, offset, size, sha256)
-				VALUES(?,?,?,?,?)
+				INSERT INTO snapshot_chunks (snapshot_id, chunk_index, offset, sha256)
+				VALUES(?,?,?,?)
 			},
 			snapshotChunk.snapshotId,
 			snapshotChunk.chunkIndex,
 			snapshotChunk.offset,
-			snapshotChunk.size,
 			snapshotChunk.sha256[]
 		);
 	}
@@ -225,8 +224,8 @@ public:
 	SnapshotDataChunk[] getChunks(long snapshotId) {
 		auto queryResult = sql(
 			q{
-				SELECT sc.chunk_index, sc.offset, sc.size,
-					b.content, b.zstd, b.z_size, b.sha256, b.z_sha256
+				SELECT sc.chunk_index, sc.offset,
+					b.size, b.content, b.zstd, b.z_size, b.sha256, b.z_sha256
 				FROM snapshot_chunks sc
 				JOIN blobs b ON b.sha256 = sc.sha256
 				WHERE sc.snapshot_id = ?

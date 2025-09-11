@@ -37,7 +37,7 @@ public:
 
 
 		// Параметры для CDC вынести в отдельные настройки (продумать)
-		auto cdc = new CDC(300, 700, 1000, 0xFF, 0x0F);
+		auto cdc = new CDC(256, 512, 1024, 0xFF, 0x0F);
 		// Разбить на фрагменты
 		auto chunks = cdc.split(data);
 
@@ -81,7 +81,6 @@ public:
 			snapshotChunk.snapshotId = idSnapshot;
 			snapshotChunk.chunkIndex = chunk.index;
 			snapshotChunk.offset = chunk.offset;
-			snapshotChunk.size = chunk.size;
 			snapshotChunk.sha256 = chunk.sha256;
 
 			_db.addSnapshotChunk(snapshotChunk);

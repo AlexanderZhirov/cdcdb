@@ -40,7 +40,6 @@ struct SnapshotChunk
 	long snapshotId;
 	long chunkIndex;
 	long offset;
-	long size;
 	ubyte[32] sha256; // BLOB(32)
 }
 
