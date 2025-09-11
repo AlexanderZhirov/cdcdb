@@ -7,6 +7,5 @@ import std.file : read;
 void main()
 {
 	auto cas = new CAS("/tmp/base.db", true);
-	cas.saveSnapshot("/tmp/text", cast(ubyte[]) read("/tmp/text"));
-	// cas.restoreSnapshot();
+	cas.newSnapshot("/tmp/text", "Файл для тестирования", cast(ubyte[]) read("/tmp/text"));
 }

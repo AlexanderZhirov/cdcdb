@@ -4,7 +4,7 @@ import cdcdb.cdc.types;
 
 import std.digest.sha : SHA256, digest;
 
-// Change Data Capture
+// Change Data Capture (Захват изменения данных)
 final class CDC
 {
 private:

@@ -1,11 +1,13 @@
 module cdcdb.db.dblite;
 
+import cdcdb.db.types;
+
 import arsd.sqlite;
-import std.file : exists, isFile;
+
+import std.file : exists;
 import std.exception : enforce;
 import std.conv : to;
-
-import cdcdb.db.types;
+import std.string : join;
 
 final class DBLite : Sqlite
 {
@@ -18,16 +20,50 @@ private:
 	{
 		return cast(SqliteResult) query(queryText, args);
 	}
+
+	// Проверка БД на наличие существующих в ней необходимых таблиц
+	void check()
+	{
+		SqliteResult queryResult = sql(
+			q{
+				WITH required(name) AS (VALUES ("snapshots"), ("blobs"), ("snapshot_chunks"))
+				SELECT name AS missing_table
+				FROM required
+				WHERE NOT EXISTS (
+					SELECT 1
+					FROM sqlite_master
+					WHERE type = "table" AND name = required.name
+				);
+			}
+		);
+
+		string[] missingTables;
+
+		foreach (row; queryResult)
+		{
+			missingTables ~= row["missing_table"].to!string;
+		}
+
+		enforce(missingTables.length == 0 || missingTables.length == 3,
+			"База данных повреждена. Отсутствуют таблицы: " ~ missingTables.join(", ")
+		);
+
+		if (missingTables.length == 3)
+		{
+			foreach (schemeQuery; _scheme)
+			{
+				sql(schemeQuery);
+			}
+		}
+	}
+
 public:
 	this(string database)
 	{
 		_dbPath = database;
 		super(database);
 
-		foreach (schemeQuery; _scheme)
-		{
-			sql(schemeQuery);
-		}
+		check();
 
 		query("PRAGMA journal_mode=WAL");
 		query("PRAGMA synchronous=NORMAL");
@@ -48,16 +84,6 @@ public:
 	{
 		query("ROLLBACK");
 	}
-
-	// Snapshot getSnapshot(string filePath, immutable ubyte[32] sha256)
-	// {
-	// 	auto queryResult = sql(
-	// 		q{
-	// 			SELECT * FROM snapshots
-	// 			WHERE file_path = ? AND file_sha256 = ?
-	// 		}, filePath, sha256
-	// 	);
-	// }
 
 	long addSnapshot(Snapshot snapshot)
 	{
@@ -125,66 +151,23 @@ public:
 		);
 	}
 
-	// struct ChunkInput
-	// {
-	// 	long index;
-	// 	long offset;
-	// 	long size;
-	// 	ubyte[32] sha256;
-	// 	const(ubyte)[] content;
-	// }
+	bool isLast(string filePath, ubyte[] fileSha256) {
+		auto queryResult = sql(
+			q{
+				SELECT COALESCE(
+					(SELECT (file_path = ? AND file_sha256 = ?)
+					FROM snapshots
+					ORDER BY created_utc DESC
+					LIMIT 1),
+					0
+				) AS is_last;
+			}, filePath, fileSha256
+		);
 
-	// long saveSnapshotWithChunks(
-	// 	string filePath, string label, long sourceLength,
-	// 	long algoMin, long algoNormal, long algoMax,
-	// 	long maskS, long maskL,
-	// 	const ChunkInput[] chunks
-	// )
-	// {
-	// 	beginImmediate();
-
-	// 	bool ok;
-
-	// 	scope (exit)
-	// 	{
-	// 		if (!ok)
-	// 			rollback();
-	// 	}
-	// 	scope (success)
-	// 	{
-	// 		commit();
-	// 	}
-
-	// 	const snapId = insertSnapshotMeta(
-	// 		filePath, label, sourceLength,
-	// 		algoMin, algoNormal, algoMax,
-	// 		maskS, maskL, SnapshotStatus.pending
-	// 	);
-
-	// 	foreach (c; chunks)
-	// 	{
-	// 		insertBlobIfMissing(c.sha256, c.size, c.content);
-	// 		insertSnapshotChunk(snapId, c.index, c.offset, c.size, c.sha256);
-	// 	}
-
-	// 	ok = true;
-
-	// 	return snapId;
-	// }
-
-
-
-
-
-
-
-
-
-
-
-
-
-	// // --- чтение ---
+		if (!queryResult.empty())
+			return queryResult.front()["is_last"].to!long > 0;
+		return false;
+	}
 
 	Snapshot[] getSnapshots(string filePath)
 	{
@@ -197,7 +180,7 @@ public:
 		);
 
 		Snapshot[] snapshots;
-		// bool found = false;
+
 		foreach (row; queryResult)
 		{
 			Snapshot snapshot;
@@ -213,15 +196,53 @@ public:
 			snapshot.algoMax = row["algo_max"].to!long;
 			snapshot.maskS = row["mask_s"].to!long;
 			snapshot.maskL = row["mask_l"].to!long;
-			snapshot.status = cast(SnapshotStatus)row["status"].to!int;
-			// found = true;
+			snapshot.status = cast(SnapshotStatus) row["status"].to!int;
+
 			snapshots ~= snapshot;
 		}
-		// enforce(found, "getSnapshot: not found");
+
 		return snapshots;
 	}
 
-	SnapshotDataChunk[] getChunks(long snapshotId) {
+	Snapshot getSnapshot(long id)
+	{
+		auto queryResult = sql(
+			q{
+				SELECT id, file_path, file_sha256, label, created_utc, source_length,
+					algo_min, algo_normal, algo_max, mask_s, mask_l, status
+				FROM snapshots WHERE id = ?
+			}, id
+		);
+
+		Snapshot snapshot;
+
+		if (!queryResult.empty())
+		{
+			auto data = queryResult.front();
+
+			snapshot.id = data["id"].to!long;
+			snapshot.filePath = data["file_path"].to!string;
+			snapshot.fileSha256 = cast(ubyte[]) data["file_sha256"].dup;
+			snapshot.label = data["label"].to!string;
+			snapshot.createdUtc = data["created_utc"].to!string;
+			snapshot.sourceLength = data["source_length"].to!long;
+			snapshot.algoMin = data["algo_min"].to!long;
+			snapshot.algoNormal = data["algo_normal"].to!long;
+			snapshot.algoMax = data["algo_max"].to!long;
+			snapshot.maskS = data["mask_s"].to!long;
+			snapshot.maskL = data["mask_l"].to!long;
+			snapshot.status = cast(SnapshotStatus) data["status"].to!int;
+		}
+
+		return snapshot;
+	}
+
+	void deleteSnapshot(long id) {
+		sql("DELETE FROM snapshots WHERE id = ?", id);
+	}
+
+	SnapshotDataChunk[] getChunks(long snapshotId)
+	{
 		auto queryResult = sql(
 			q{
 				SELECT sc.chunk_index, sc.offset,

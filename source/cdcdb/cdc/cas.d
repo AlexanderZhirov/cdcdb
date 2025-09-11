@@ -14,12 +14,34 @@ import std.conv : to;
 
 import std.file : write;
 
-// CAS-хранилище (Content-Addressable Storage) со снапшотами
+// Content-Addressable Storage (Контентно-адресуемая система хранения)
+// CAS-хранилище со снапшотами
 final class CAS
 {
 private:
 	DBLite _db;
 	bool _zstd;
+
+	ubyte[] buildContent(const ref Snapshot snapshot)
+	{
+		auto dataChunks = _db.getChunks(snapshot.id);
+		ubyte[] content;
+
+		foreach (chunk; dataChunks) {
+			ubyte[] bytes;
+			if (chunk.zstd) {
+				enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
+				bytes = cast(ubyte[]) uncompress(chunk.content);
+			} else {
+				bytes = chunk.content;
+			}
+			enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
+			content ~= bytes;
+		}
+		enforce(snapshot.fileSha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
+
+		return content;
+	}
 public:
 	this(string database, bool zstd = false)
 	{
@@ -27,14 +49,12 @@ public:
 		_zstd = zstd;
 	}
 
-	size_t saveSnapshot(string filePath, const(ubyte)[] data)
+	size_t newSnapshot(string filePath, string label, const(ubyte)[] data)
 	{
 		ubyte[32] hashSource = digest!SHA256(data);
 		// Сделать запрос в БД по filePath и сверить хеш файлов
 
-		// writeln(hashSource.length);
-		
-
+		if (_db.isLast(filePath, hashSource)) return 0;
 
 		// Параметры для CDC вынести в отдельные настройки (продумать)
 		auto cdc = new CDC(256, 512, 1024, 0xFF, 0x0F);
@@ -42,12 +62,25 @@ public:
 		auto chunks = cdc.split(data);
 
 		Snapshot snapshot;
+
 		snapshot.filePath = filePath;
 		snapshot.fileSha256 = hashSource;
-		snapshot.label = "Файл для теста";
+		snapshot.label = label;
 		snapshot.sourceLength = data.length;
 
 		_db.beginImmediate();
+
+		bool ok;
+
+		scope (exit)
+		{
+			if (!ok)
+				_db.rollback();
+		}
+		scope (success)
+		{
+			_db.commit();
+		}
 
 		auto idSnapshot = _db.addSnapshot(snapshot);
 
@@ -56,7 +89,7 @@ public:
 
 		blob.zstd = _zstd;
 
-		// Записать фрагменты в БД
+		// Запись фрагментов в БД
 		foreach (chunk; chunks)
 		{
 			blob.sha256 = chunk.sha256;
@@ -76,6 +109,7 @@ public:
 				blob.content = content.dup;
 			}
 
+			// Запись фрагментов
 			_db.addBlob(blob);
 
 			snapshotChunk.snapshotId = idSnapshot;
@@ -83,38 +117,28 @@ public:
 			snapshotChunk.offset = chunk.offset;
 			snapshotChunk.sha256 = chunk.sha256;
 
+			// Привязка фрагментов к снимку
 			_db.addSnapshotChunk(snapshotChunk);
 		}
-		_db.commit();
-		// Записать манифест в БД
-		// Вернуть ID манифеста
-		return 0;
+
+		ok = true;
+
+		return idSnapshot;
 	}
 
-	void restoreSnapshot()
+	Snapshot[] getSnapshotList(string filePath)
 	{
-		string restoreFile = "/tmp/restore.d";
+		return _db.getSnapshots(filePath);
+	}
 
-		foreach (Snapshot snapshot; _db.getSnapshots("/tmp/text")) {
-			auto dataChunks = _db.getChunks(snapshot.id);
-			ubyte[] content;
+	ubyte[] getSnapshotData(const ref Snapshot snapshot)
+	{
+		ubyte[] content = buildContent(snapshot);
+		return content;
+	}
 
-			foreach (SnapshotDataChunk chunk; dataChunks) {
-				ubyte[] bytes;
-				if (chunk.zstd) {
-					enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
-					bytes = cast(ubyte[]) uncompress(chunk.content);
-				} else {
-					bytes = chunk.content;
-				}
-				enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
-
-				content ~= bytes;
-			}
-
-			enforce(snapshot.fileSha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
-
-			write(snapshot.filePath ~ snapshot.id.to!string, content);
-		}
+	void removeSnapshot(const ref Snapshot snapshot)
+	{
+		_db.deleteSnapshot(snapshot.id);
 	}
 }
