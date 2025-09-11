@@ -141,4 +141,9 @@ public:
 	{
 		_db.deleteSnapshot(snapshot.id);
 	}
+
+	string getVersion() {
+		import cdcdb.version_;
+		return cdcdbVersion;
+	}
 }

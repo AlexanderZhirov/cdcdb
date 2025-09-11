@@ -7,7 +7,7 @@ import arsd.sqlite;
 import std.file : exists;
 import std.exception : enforce;
 import std.conv : to;
-import std.string : join;
+import std.string : join, replace;
 
 final class DBLite : Sqlite
 {
@@ -55,6 +55,12 @@ private:
 				sql(schemeQuery);
 			}
 		}
+	}
+
+	DateTime toDateTime(string sqliteDate)
+	{
+		string isoDate = sqliteDate.replace(" ", "T");
+		return DateTime.fromISOExtString(isoDate);
 	}
 
 public:
@@ -189,7 +195,7 @@ public:
 			snapshot.filePath = row["file_path"].to!string;
 			snapshot.fileSha256 = cast(ubyte[]) row["file_sha256"].dup;
 			snapshot.label = row["label"].to!string;
-			snapshot.createdUtc = row["created_utc"].to!string;
+			snapshot.createdUtc = toDateTime(row["created_utc"].to!string);
 			snapshot.sourceLength = row["source_length"].to!long;
 			snapshot.algoMin = row["algo_min"].to!long;
 			snapshot.algoNormal = row["algo_normal"].to!long;
@@ -224,7 +230,7 @@ public:
 			snapshot.filePath = data["file_path"].to!string;
 			snapshot.fileSha256 = cast(ubyte[]) data["file_sha256"].dup;
 			snapshot.label = data["label"].to!string;
-			snapshot.createdUtc = data["created_utc"].to!string;
+			snapshot.createdUtc = toDateTime(data["created_utc"].to!string);
 			snapshot.sourceLength = data["source_length"].to!long;
 			snapshot.algoMin = data["algo_min"].to!long;
 			snapshot.algoNormal = data["algo_normal"].to!long;

@@ -1,5 +1,7 @@
 module cdcdb.db.types;
 
+import std.datetime : DateTime;
+
 enum SnapshotStatus : int
 {
 	pending = 0,
@@ -12,7 +14,7 @@ struct Snapshot
 	string filePath;
 	ubyte[32] fileSha256;
 	string label;
-	string createdUtc;
+	DateTime createdUtc;
 	long sourceLength;
 	long algoMin;
 	long algoNormal;
@@ -29,8 +31,8 @@ struct Blob
 	long size;
 	long zSize;
 	ubyte[] content;
-	string createdUtc;
-	string lastSeenUtc;
+	DateTime createdUtc;
+	DateTime lastSeenUtc;
 	long refcount;
 	bool zstd;
 }
