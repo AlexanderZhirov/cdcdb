@@ -1,14 +1,66 @@
-module cdcdb.db.dblite;
+module cdcdb.dblite;
 
-import cdcdb.db.types;
+import arsd.sqlite : Sqlite, SqliteResult, DatabaseException;
 
-import arsd.sqlite;
-
-import std.exception : enforce;
-import std.conv : to;
+import std.datetime : DateTime;
 import std.string : join, replace, toLower;
 import std.algorithm : canFind;
+import std.conv : to;
 import std.format : format;
+import std.exception : enforce;
+
+enum SnapshotStatus : ubyte
+{
+	pending = 0,
+	ready = 1
+}
+
+struct DBSnapshot {
+	long id;
+	string label;
+	ubyte[32] sha256;
+	string description;
+	DateTime createdUtc;
+	long sourceLength;
+	long algoMin;
+	long algoNormal;
+	long algoMax;
+	long maskS;
+	long maskL;
+	SnapshotStatus status;
+}
+
+struct DBSnapshotChunk
+{
+	long snapshotId;
+	long chunkIndex;
+	long offset;
+	ubyte[32] sha256;
+}
+
+struct DBBlob
+{
+	ubyte[32] sha256;
+	ubyte[32] zSha256;
+	long size;
+	long zSize;
+	ubyte[] content;
+	DateTime createdUtc;
+	DateTime lastSeenUtc;
+	long refcount;
+	bool zstd;
+}
+
+struct DBSnapshotChunkData {
+	long chunkIndex;
+	long offset;
+	long size;
+	ubyte[] content;
+	bool zstd;
+	long zSize;
+	ubyte[32] sha256;
+	ubyte[32] zSha256;
+}
 
 final class DBLite : Sqlite
 {
@@ -120,7 +172,25 @@ public:
 		sql("ROLLBACK");
 	}
 
-	long addSnapshot(Snapshot snapshot)
+	bool isLast(string label, ubyte[] sha256) {
+		auto queryResult = sql(
+			q{
+				SELECT COALESCE(
+					(SELECT (label = ? AND sha256 = ?)
+					FROM snapshots
+					ORDER BY created_utc DESC
+					LIMIT 1),
+					0
+				) AS is_last;
+			}, label, sha256
+		);
+
+		if (!queryResult.empty())
+			return queryResult.front()["is_last"].to!long > 0;
+		return false;
+	}
+
+	long addSnapshot(DBSnapshot snapshot)
 	{
 		auto queryResult = sql(
 			q{
@@ -157,13 +227,14 @@ public:
 		return queryResult.front()["id"].to!long;
 	}
 
-	void addBlob(Blob blob)
+	bool addBlob(DBBlob blob)
 	{
-		sql(
+		auto queryResult = sql(
 			q{
 				INSERT INTO blobs (sha256, z_sha256, size, z_size, content, zstd)
 				VALUES (?,?,?,?,?,?)
 				ON CONFLICT (sha256) DO NOTHING
+				RETURNING sha256
 			},
 			blob.sha256[],
 			blob.zstd ? blob.zSha256[] : null,
@@ -172,76 +243,28 @@ public:
 			blob.content,
 			blob.zstd.to!int
 		);
+
+		return !queryResult.empty();
 	}
 
-	void addSnapshotChunk(SnapshotChunk snapshotChunk)
+	bool addSnapshotChunk(DBSnapshotChunk snapshotChunk)
 	{
-		sql(
+		auto queryResult = sql(
 			q{
 				INSERT INTO snapshot_chunks (snapshot_id, chunk_index, offset, sha256)
 				VALUES(?,?,?,?)
+				RETURNING snapshot_id
 			},
 			snapshotChunk.snapshotId,
 			snapshotChunk.chunkIndex,
 			snapshotChunk.offset,
 			snapshotChunk.sha256[]
 		);
+
+		return !queryResult.empty();
 	}
 
-	bool isLast(string label, ubyte[] sha256) {
-		auto queryResult = sql(
-			q{
-				SELECT COALESCE(
-					(SELECT (label = ? AND sha256 = ?)
-					FROM snapshots
-					ORDER BY created_utc DESC
-					LIMIT 1),
-					0
-				) AS is_last;
-			}, label, sha256
-		);
-
-		if (!queryResult.empty())
-			return queryResult.front()["is_last"].to!long > 0;
-		return false;
-	}
-
-	Snapshot[] getSnapshots(string label)
-	{
-		auto queryResult = sql(
-			q{
-				SELECT id, label, sha256, description, created_utc, source_length,
-					algo_min, algo_normal, algo_max, mask_s, mask_l, status
-				FROM snapshots WHERE (length(?) = 0 OR label = ?1);
-			}, label
-		);
-
-		Snapshot[] snapshots;
-
-		foreach (row; queryResult)
-		{
-			Snapshot snapshot;
-
-			snapshot.id = row["id"].to!long;
-			snapshot.label = row["label"].to!string;
-			snapshot.sha256 = cast(ubyte[]) row["sha256"].dup;
-			snapshot.description = row["description"].to!string;
-			snapshot.createdUtc = toDateTime(row["created_utc"].to!string);
-			snapshot.sourceLength = row["source_length"].to!long;
-			snapshot.algoMin = row["algo_min"].to!long;
-			snapshot.algoNormal = row["algo_normal"].to!long;
-			snapshot.algoMax = row["algo_max"].to!long;
-			snapshot.maskS = row["mask_s"].to!long;
-			snapshot.maskL = row["mask_l"].to!long;
-			snapshot.status = cast(SnapshotStatus) row["status"].to!int;
-
-			snapshots ~= snapshot;
-		}
-
-		return snapshots;
-	}
-
-	Snapshot getSnapshot(long id)
+	DBSnapshot getSnapshot(long id)
 	{
 		auto queryResult = sql(
 			q{
@@ -251,7 +274,7 @@ public:
 			}, id
 		);
 
-		Snapshot snapshot;
+		DBSnapshot snapshot;
 
 		if (!queryResult.empty())
 		{
@@ -274,11 +297,42 @@ public:
 		return snapshot;
 	}
 
-	void deleteSnapshot(long id) {
-		sql("DELETE FROM snapshots WHERE id = ?", id);
+	DBSnapshot[] getSnapshots(string label)
+	{
+		auto queryResult = sql(
+			q{
+				SELECT id, label, sha256, description, created_utc, source_length,
+					algo_min, algo_normal, algo_max, mask_s, mask_l, status
+				FROM snapshots WHERE (length(?) = 0 OR label = ?1);
+			}, label
+		);
+
+		DBSnapshot[] snapshots;
+
+		foreach (row; queryResult)
+		{
+			DBSnapshot snapshot;
+
+			snapshot.id = row["id"].to!long;
+			snapshot.label = row["label"].to!string;
+			snapshot.sha256 = cast(ubyte[]) row["sha256"].dup;
+			snapshot.description = row["description"].to!string;
+			snapshot.createdUtc = toDateTime(row["created_utc"].to!string);
+			snapshot.sourceLength = row["source_length"].to!long;
+			snapshot.algoMin = row["algo_min"].to!long;
+			snapshot.algoNormal = row["algo_normal"].to!long;
+			snapshot.algoMax = row["algo_max"].to!long;
+			snapshot.maskS = row["mask_s"].to!long;
+			snapshot.maskL = row["mask_l"].to!long;
+			snapshot.status = cast(SnapshotStatus) row["status"].to!int;
+
+			snapshots ~= snapshot;
+		}
+
+		return snapshots;
 	}
 
-	SnapshotDataChunk[] getChunks(long snapshotId)
+	DBSnapshotChunkData[] getChunks(long snapshotId)
 	{
 		auto queryResult = sql(
 			q{
@@ -291,11 +345,11 @@ public:
 			}, snapshotId
 		);
 
-		SnapshotDataChunk[] sdchs;
+		DBSnapshotChunkData[] sdchs;
 
 		foreach (row; queryResult)
 		{
-			SnapshotDataChunk sdch;
+			DBSnapshotChunkData sdch;
 
 			sdch.chunkIndex = row["chunk_index"].to!long;
 			sdch.offset = row["offset"].to!long;
@@ -310,5 +364,15 @@ public:
 		}
 
 		return sdchs;
+	}
+
+	long deleteSnapshot(long id) {
+		auto queryResult = sql("DELETE FROM snapshots WHERE id = ? RETURNING id", id);
+
+		if (queryResult.empty()) {
+			throw new Exception("Ошибка при удалении снимка из базы данных");
+		}
+
+		return queryResult.front()["id"].to!long;
 	}
 }

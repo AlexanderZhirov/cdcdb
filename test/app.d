@@ -6,12 +6,18 @@ import std.file : read;
 
 void main()
 {
-	auto cas = new CAS("/tmp/base.db", true);
-	cas.newSnapshot("/tmp/text", cast(ubyte[]) read("/tmp/text"));
-	// import std.stdio : writeln;
+	auto storage = new Storage("/tmp/base.db", true);
+	storage.newSnapshot("/tmp/text", cast(ubyte[]) read("/tmp/text"));
 
-	foreach (snapshot; cas.getSnapshots()) {
-		writeln(snapshot);
+	// if (snapshot !is null) {
+	// 	writeln(cast(string) snapshot.data);
+	// 	snapshot.remove();
+	// }
+
+	import std.stdio : writeln;
+
+	foreach (snapshot; storage.getSnapshots()) {
+		writeln(cast(string) snapshot.data);
 	}
 
 	// writeln(cas.getVersion);

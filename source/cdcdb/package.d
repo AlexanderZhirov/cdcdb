@@ -1,3 +1,4 @@
 module cdcdb;
 
-public import cdcdb.cdc;
+public import cdcdb.storage;
+public import cdcdb.snapshot;

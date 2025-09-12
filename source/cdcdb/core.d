@@ -1,4 +1,4 @@
-module cdcdb.cdc.core;
+module cdcdb.core;
 
 import std.digest.sha : SHA256, digest;
 
