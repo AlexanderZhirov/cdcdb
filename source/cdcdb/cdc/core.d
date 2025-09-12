@@ -1,8 +1,14 @@
 module cdcdb.cdc.core;
 
-import cdcdb.cdc.types;
-
 import std.digest.sha : SHA256, digest;
+
+struct Chunk
+{
+	size_t index; // 1..N
+	size_t offset; // смещение в исходном буфере
+	size_t size; // размер чанка
+	immutable(ubyte)[32] sha256; // hex(SHA-256) содержимого
+}
 
 // Change Data Capture (Захват изменения данных)
 final class CDC

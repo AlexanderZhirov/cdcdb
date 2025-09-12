@@ -92,7 +92,7 @@ public:
 		blob.zstd = _zstd;
 
 		// Разбить на фрагменты
-		auto chunks = _cdc.split(data);
+		Chunk[] chunks = _cdc.split(data);
 
 		// Запись фрагментов в БД
 		foreach (chunk; chunks)
