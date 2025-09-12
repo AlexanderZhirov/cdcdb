@@ -16,8 +16,8 @@ High-level API for the SQLite store and snapshot management.
   - `getSnapshots`: Returns a list of snapshots (all, or filtered by label). Returns an array of `Snapshot`.
   - `getSnapshot`: Fetches a snapshot by ID. Returns a `Snapshot`.
   - `setupCDC`: Configures CDC splitting parameters. Returns nothing.
-  - `getVersion`: Returns the library version string (e.g., `"0.0.2"`).
   - `removeSnapshots`: Deletes snapshots by label, ID, or a `Snapshot` object. Returns the number of deleted snapshots (for label) or `true`/`false` (for ID or object).
+  - `getVersion`: Returns the library version string.
 
 ### Snapshot
 Work with an individual snapshot.
