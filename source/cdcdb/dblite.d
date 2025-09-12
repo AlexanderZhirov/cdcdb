@@ -369,10 +369,24 @@ public:
 	long deleteSnapshot(long id) {
 		auto queryResult = sql("DELETE FROM snapshots WHERE id = ? RETURNING id", id);
 
-		if (queryResult.empty()) {
-			throw new Exception("Ошибка при удалении снимка из базы данных");
+		if (!queryResult.empty()) {
+			return queryResult.front()["id"].to!long;
+		}
+		return 0;
+	}
+
+	long deleteSnapshot(string label) {
+		auto queryResult = sql(
+			q{
+				DELETE FROM snapshots
+				WHERE label = ?
+				RETURNING 1;
+			}, label);
+
+		if (!queryResult.empty()) {
+			return queryResult.length.to!long;
 		}
 
-		return queryResult.front()["id"].to!long;
+		return 0;
 	}
 }

@@ -18,20 +18,41 @@
 			"name": "static",
 			"targetType": "staticLibrary",
 			"targetPath": "lib",
-			"sourcePaths": ["source"]
+			"sourcePaths": [
+				"source"
+			]
 		},
 		{
 			"name": "dynamic",
 			"targetType": "dynamicLibrary",
 			"targetPath": "lib",
-			"sourcePaths": ["source"]
+			"sourcePaths": [
+				"source"
+			]
 		},
 		{
 			"name": "binary",
 			"targetType": "executable",
 			"targetPath": "bin",
 			"mainSourceFile": "test/app.d",
-			"sourcePaths": ["source", "test"]
+			"sourcePaths": [
+				"source",
+				"test"
+			]
+		},
+		{
+			"name": "unittest",
+			"targetType": "executable",
+			"targetPath": "bin",
+			"sourcePaths": [
+				"source",
+				"test"
+			],
+			"buildOptions": [
+				"unittests"
+			],
+			"dflags": ["-main"],
+			"mainSourceFile": "test/unittest.d"
 		}
 	]
 }

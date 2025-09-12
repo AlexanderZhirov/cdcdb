@@ -137,6 +137,23 @@ public:
 		return snapshot;
 	}
 
+	// Удаляет снимок по метке, возвращает количество удаленных снимков
+	long removeSnapshots(string label) {
+		return _db.deleteSnapshot(label);
+	}
+
+	bool removeSnapshots(Snapshot snapshot) {
+		return removeSnapshots(snapshot.id);
+	}
+
+	bool removeSnapshots(long idSnapshot) {
+		return _db.deleteSnapshot(idSnapshot) == idSnapshot;
+	}
+
+	Snapshot getSnapshot(long idSnapshot) {
+		return new Snapshot(_db, idSnapshot);
+	}
+
 	Snapshot[] getSnapshots(string label = string.init) {
 		Snapshot[] snapshots;
 		
