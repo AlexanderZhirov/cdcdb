@@ -13,7 +13,7 @@ private:
 	// _gear
 	mixin(import("gear.d"));
 
-	size_t cut(const(ubyte)[] src) @safe nothrow
+	size_t cut(const(ubyte)[] src) pure nothrow @safe @nogc
 	{
 		size_t size = src.length;
 		if (size == 0)
@@ -67,7 +67,7 @@ public:
 		_maskL = maskL;
 	}
 
-	Chunk[] split(const(ubyte)[] data) @safe
+	Chunk[] split(const(ubyte)[] data) @safe nothrow
 	{
 		Chunk[] chunks;
 		if (data.length == 0)

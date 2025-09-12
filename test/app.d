@@ -7,7 +7,7 @@ import std.file : read;
 void main()
 {
 	auto cas = new CAS("/tmp/base.db", true);
-	cas.newSnapshot("/tmp/texts", cast(ubyte[]) read("/tmp/text"));
+	cas.newSnapshot("/tmp/text", cast(ubyte[]) read("/tmp/text"));
 	// import std.stdio : writeln;
 
 	foreach (snapshot; cas.getSnapshots()) {

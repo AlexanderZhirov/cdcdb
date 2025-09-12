@@ -131,7 +131,7 @@ public:
 		return idSnapshot;
 	}
 
-	Snapshot[] getSnapshots(string label = "")
+	Snapshot[] getSnapshots(string label = string.init)
 	{
 		return _db.getSnapshots(label);
 	}
@@ -178,7 +178,7 @@ public:
 		ok = true;
 	}
 
-	string getVersion() {
+	string getVersion() const @safe nothrow {
 		import cdcdb.version_;
 		return cdcdbVersion;
 	}
