@@ -27,8 +27,8 @@ public:
 	this(
 		string database,
 		bool zstd = false,
-		int busyTimeout = 3000,
-		ubyte maxRetries = 3,
+		size_t busyTimeout = 3000,
+		size_t maxRetries = 3,
 		size_t minSize = 256,
 		size_t normalSize = 512,
 		size_t maxSize = 1024,

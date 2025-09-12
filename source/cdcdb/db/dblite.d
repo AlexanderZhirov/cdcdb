@@ -14,7 +14,7 @@ final class DBLite : Sqlite
 {
 private:
 	string _dbPath;
-	ubyte _maxRetries;
+	size_t _maxRetries;
 	// _scheme
 	mixin(import("scheme.d"));
 
@@ -25,7 +25,7 @@ private:
 		}
 
 		string msg;
-		ubyte tryNo = _maxRetries;
+		size_t tryNo = _maxRetries;
 
 		while (tryNo) {
 			try {
@@ -90,7 +90,7 @@ private:
 	}
 
 public:
-	this(string database, int busyTimeout, ubyte maxRetries)
+	this(string database, size_t busyTimeout, size_t maxRetries)
 	{
 		_dbPath = database;
 		super(database);
