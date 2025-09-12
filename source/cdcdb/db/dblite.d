@@ -111,7 +111,7 @@ public:
 			},
 			snapshot.filePath,
 			snapshot.fileSha256[],
-			snapshot.label,
+			snapshot.label.length ? snapshot.label : null,
 			snapshot.sourceLength,
 			snapshot.algoMin,
 			snapshot.algoNormal,

@@ -7,10 +7,10 @@ import std.file : read;
 void main()
 {
 	auto cas = new CAS("/tmp/base.db", true);
-	// cas.newSnapshot("/tmp/text", "Файл для тестирования", cast(ubyte[]) read("/tmp/text"));
-	import std.stdio : writeln;
+	cas.newSnapshot("/tmp/text", cast(ubyte[]) read("/tmp/text"));
+	// import std.stdio : writeln;
 
-	writeln(cas.getSnapshotList("/tmp/text"));
+	// writeln(cas.getSnapshotList("/tmp/text"));
 
-	writeln(cas.getVersion);
+	// writeln(cas.getVersion);
 }

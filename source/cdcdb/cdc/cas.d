@@ -22,44 +22,42 @@ private:
 	DBLite _db;
 	bool _zstd;
 
-	ubyte[] buildContent(const ref Snapshot snapshot)
-	{
-		auto dataChunks = _db.getChunks(snapshot.id);
-		ubyte[] content;
-
-		foreach (chunk; dataChunks) {
-			ubyte[] bytes;
-			if (chunk.zstd) {
-				enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
-				bytes = cast(ubyte[]) uncompress(chunk.content);
-			} else {
-				bytes = chunk.content;
-			}
-			enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
-			content ~= bytes;
-		}
-		enforce(snapshot.fileSha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
-
-		return content;
-	}
+	size_t _minSize;
+	size_t _normalSize;
+	size_t _maxSize;
+	size_t _maskS;
+	size_t _maskL;
+	CDC _cdc;
 public:
-	this(string database, bool zstd = false)
-	{
+	this(
+		string database,
+		bool zstd = false,
+		size_t minSize = 256,
+		size_t normalSize = 512,
+		size_t maxSize = 1024,
+		size_t maskS = 0xFF,
+		size_t maskL = 0x0F
+	) {
 		_db = new DBLite(database);
 		_zstd = zstd;
+
+		_minSize = minSize;
+		_normalSize = normalSize;
+		_maxSize = maxSize;
+		_maskS = maskS;
+		_maskL = maskL;
+
+		_cdc = new CDC(_minSize, _normalSize, _maxSize, _maskS, _maskL);
 	}
 
-	size_t newSnapshot(string filePath, string label, const(ubyte)[] data)
+	size_t newSnapshot(string filePath, const(ubyte)[] data, string label = string.init)
 	{
 		ubyte[32] hashSource = digest!SHA256(data);
-		// Сделать запрос в БД по filePath и сверить хеш файлов
 
+		// Если последний снимок файла соответствует текущему
 		if (_db.isLast(filePath, hashSource)) return 0;
-
-		// Параметры для CDC вынести в отдельные настройки (продумать)
-		auto cdc = new CDC(256, 512, 1024, 0xFF, 0x0F);
 		// Разбить на фрагменты
-		auto chunks = cdc.split(data);
+		auto chunks = _cdc.split(data);
 
 		Snapshot snapshot;
 
@@ -67,6 +65,11 @@ public:
 		snapshot.fileSha256 = hashSource;
 		snapshot.label = label;
 		snapshot.sourceLength = data.length;
+		snapshot.algoMin = _minSize;
+		snapshot.algoNormal = _normalSize;
+		snapshot.algoMax = _maxSize;
+		snapshot.maskS = _maskS;
+		snapshot.maskL = _maskL;
 
 		_db.beginImmediate();
 
@@ -133,7 +136,22 @@ public:
 
 	ubyte[] getSnapshotData(const ref Snapshot snapshot)
 	{
-		ubyte[] content = buildContent(snapshot);
+		auto dataChunks = _db.getChunks(snapshot.id);
+		ubyte[] content;
+
+		foreach (chunk; dataChunks) {
+			ubyte[] bytes;
+			if (chunk.zstd) {
+				enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
+				bytes = cast(ubyte[]) uncompress(chunk.content);
+			} else {
+				bytes = chunk.content;
+			}
+			enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
+			content ~= bytes;
+		}
+		enforce(snapshot.fileSha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
+
 		return content;
 	}
 
