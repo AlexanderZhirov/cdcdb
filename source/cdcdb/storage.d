@@ -4,12 +4,15 @@ import cdcdb.dblite;
 import cdcdb.core;
 import cdcdb.snapshot;
 
+import zstd : compress, Level;
+
 final class Storage
 {
 private:
 	// Параметры работы с базой данных
 	DBLite _db;
 	bool _zstd;
+	int _level;
 	// Настройки CDC механизма
 	CDC _cdc;
 	size_t _minSize;
@@ -31,10 +34,11 @@ private:
 	}
 
 public:
-	this(string database, bool zstd = false, size_t busyTimeout = 3000, size_t maxRetries = 3)
+	this(string database, bool zstd = false, int level = Level.base, size_t busyTimeout = 3000, size_t maxRetries = 3)
 	{
 		_db = new DBLite(database, busyTimeout, maxRetries);
 		_zstd = zstd;
+		_level = level;
 		initCDC();
 	}
 
@@ -94,8 +98,6 @@ public:
 		// Разбить на фрагменты
 		Chunk[] chunks = _cdc.split(data);
 
-		import zstd : compress;
-
 		// Запись фрагментов в БД
 		foreach (chunk; chunks)
 		{
@@ -105,7 +107,7 @@ public:
 			auto content = data[chunk.offset .. chunk.offset + chunk.size];
 
 			if (_zstd) {
-				ubyte[] zBytes = compress(content, 22);
+				ubyte[] zBytes = compress(content, _level);
 				size_t zSize = zBytes.length;
 				ubyte[32] zHash = digest!SHA256(zBytes);
 
