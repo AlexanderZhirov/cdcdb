@@ -43,7 +43,6 @@ import cdcdb;
 
 import std.stdio : writeln, File;
 import std.file : exists, remove;
-import zstd : Level;
 
 void main()
 {
@@ -51,7 +50,7 @@ void main()
 	string dbPath = "example.db";
 
 	// Initialize Storage with Zstd compression
-	auto storage = new Storage(dbPath, true, Level.speed);
+	auto storage = new Storage(dbPath, true, 22);
 
 	// Create a snapshot
 	ubyte[] data = cast(ubyte[]) "Hello, cdcdb!".dup;
