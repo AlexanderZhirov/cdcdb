@@ -4,7 +4,7 @@ import cdcdb.dblite;
 
 import zstd : uncompress;
 
-import std.digest.sha : SHA256, digest, SHA256Digest;
+import std.digest.sha : SHA256, digest;
 import std.datetime : DateTime;
 import std.exception : enforce;
 
@@ -13,6 +13,25 @@ final class Snapshot
 private:
 	DBLite _db;
 	DBSnapshot _snapshot;
+
+	const(ubyte)[] getBytes(const ref DBSnapshotChunkData chunk)
+	{
+		ubyte[] bytes;
+		if (chunk.zstd)
+		{
+			enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
+			bytes = cast(ubyte[]) uncompress(chunk.content);
+		}
+		else
+		{
+			bytes = chunk.content.dup;
+		}
+		enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
+		enforce(chunk.sha256 == digest!SHA256(bytes), "Хеш-сумма фрагмента не совпадает");
+
+		return bytes;
+	}
+
 public:
 	this(DBLite dblite, DBSnapshot dbSnapshot)
 	{
@@ -30,25 +49,18 @@ public:
 	{
 		auto chunks = _db.getChunks(_snapshot.id);
 		ubyte[] content;
+		content.reserve(_snapshot.sourceLength);
+
+		auto fctx = SHA256();
 
 		foreach (chunk; chunks)
 		{
-			ubyte[] bytes;
-			if (chunk.zstd)
-			{
-				enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
-				bytes = cast(ubyte[]) uncompress(chunk.content);
-			}
-			else
-			{
-				bytes = chunk.content;
-			}
-			enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
-			enforce(chunk.sha256 == digest!SHA256(bytes), "Хеш-сумма фрагмента не совпадает");
+			const(ubyte)[] bytes = getBytes(chunk);
 			content ~= bytes;
+			fctx.put(bytes);
 		}
 
-		enforce(_snapshot.sha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
+		enforce(_snapshot.sha256 == fctx.finish(), "Хеш-сумма файла не совпадает");
 
 		return content;
 	}
@@ -56,29 +68,16 @@ public:
 	void data(void delegate(const(ubyte)[]) sink)
 	{
 		auto chunks = _db.getChunks(_snapshot.id);
-		auto fctx = new SHA256Digest();
+		auto fctx = SHA256();
 
 		foreach (chunk; chunks)
 		{
-			ubyte[] bytes;
-			if (chunk.zstd)
-			{
-				enforce(chunk.zSize == chunk.content.length, "Размер сжатого фрагмента не соответствует ожидаемому");
-				bytes = cast(ubyte[]) uncompress(chunk.content);
-			}
-			else
-			{
-				bytes = chunk.content;
-			}
-
-			enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
-			enforce(chunk.sha256 == digest!SHA256(bytes), "Хеш-сумма фрагмента не совпадает");
-
+			const(ubyte)[] bytes = getBytes(chunk);
 			sink(bytes);
 			fctx.put(bytes);
 		}
 
-		enforce(_snapshot.sha256 = fctx.finish(), "Хеш-сумма файла не совпадает");
+		enforce(_snapshot.sha256 == fctx.finish(), "Хеш-сумма файла не совпадает");
 	}
 
 	bool remove()
@@ -132,6 +131,7 @@ public:
 	@property string status() const
 	{
 		import std.conv : to;
+
 		return _snapshot.status.to!string;
 	}
 
