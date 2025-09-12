@@ -159,7 +159,23 @@ public:
 
 	void removeSnapshot(const ref Snapshot snapshot)
 	{
+		_db.beginImmediate();
+
+		bool ok;
+
+		scope (exit)
+		{
+			if (!ok)
+				_db.rollback();
+		}
+		scope (success)
+		{
+			_db.commit();
+		}
+
 		_db.deleteSnapshot(snapshot.id);
+
+		ok = true;
 	}
 
 	string getVersion() {
