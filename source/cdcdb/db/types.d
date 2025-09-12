@@ -11,9 +11,9 @@ enum SnapshotStatus : int
 struct Snapshot
 {
 	long id;
-	string filePath;
-	ubyte[32] fileSha256;
 	string label;
+	ubyte[32] sha256;
+	string description;
 	DateTime createdUtc;
 	long sourceLength;
 	long algoMin;

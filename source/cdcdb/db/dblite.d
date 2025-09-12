@@ -7,18 +7,45 @@ import arsd.sqlite;
 import std.file : exists;
 import std.exception : enforce;
 import std.conv : to;
-import std.string : join, replace;
+import std.string : join, replace, toLower;
+import std.algorithm : canFind;
+import std.format : format;
 
 final class DBLite : Sqlite
 {
 private:
 	string _dbPath;
+	ubyte _maxRetries;
 	// _scheme
 	mixin(import("scheme.d"));
 
 	SqliteResult sql(T...)(string queryText, T args)
 	{
-		return cast(SqliteResult) query(queryText, args);
+		if (_maxRetries == 0) {
+			return cast(SqliteResult) query(queryText, args);
+		}
+
+		string msg;
+		ubyte tryNo = _maxRetries;
+
+		while (tryNo) {
+			try {
+				return cast(SqliteResult) query(queryText, args);
+			} catch (DatabaseException e) {
+				msg = e.msg;
+				if (msg.toLower.canFind("locked", "busy")) {
+					if (--tryNo == 0) {
+						throw new Exception(
+							"Не удалось выполнить подключение к базе данных после %d неудачных попыток: %s"
+							.format(_maxRetries, msg)
+						);
+					}
+					continue;
+				}
+				break;
+			}
+		}
+		throw new Exception(msg);
 	}
 
 	// Проверка БД на наличие существующих в ней необходимых таблиц
@@ -64,31 +91,34 @@ private:
 	}
 
 public:
-	this(string database)
+	this(string database, int busyTimeout, ubyte maxRetries)
 	{
 		_dbPath = database;
 		super(database);
 
 		check();
 
+		_maxRetries = maxRetries;
+
 		query("PRAGMA journal_mode=WAL");
 		query("PRAGMA synchronous=NORMAL");
 		query("PRAGMA foreign_keys=ON");
+		query("PRAGMA busy_timeout=%d".format(busyTimeout));
 	}
 
 	void beginImmediate()
 	{
-		query("BEGIN IMMEDIATE");
+		sql("BEGIN IMMEDIATE");
 	}
 
 	void commit()
 	{
-		query("COMMIT");
+		sql("COMMIT");
 	}
 
 	void rollback()
 	{
-		query("ROLLBACK");
+		sql("ROLLBACK");
 	}
 
 	long addSnapshot(Snapshot snapshot)
@@ -96,9 +126,9 @@ public:
 		auto queryResult = sql(
 			q{
 				INSERT INTO snapshots(
-					file_path,
-					file_sha256,
 					label,
+					sha256,
+					description,
 					source_length,
 					algo_min,
 					algo_normal,
@@ -109,9 +139,9 @@ public:
 				) VALUES (?,?,?,?,?,?,?,?,?,?)
 				RETURNING id
 			},
-			snapshot.filePath,
-			snapshot.fileSha256[],
-			snapshot.label.length ? snapshot.label : null,
+			snapshot.label,
+			snapshot.sha256[],
+			snapshot.description.length ? snapshot.description : null,
 			snapshot.sourceLength,
 			snapshot.algoMin,
 			snapshot.algoNormal,
@@ -157,17 +187,17 @@ public:
 		);
 	}
 
-	bool isLast(string filePath, ubyte[] fileSha256) {
+	bool isLast(string label, ubyte[] sha256) {
 		auto queryResult = sql(
 			q{
 				SELECT COALESCE(
-					(SELECT (file_path = ? AND file_sha256 = ?)
+					(SELECT (label = ? AND sha256 = ?)
 					FROM snapshots
 					ORDER BY created_utc DESC
 					LIMIT 1),
 					0
 				) AS is_last;
-			}, filePath, fileSha256
+			}, label, sha256
 		);
 
 		if (!queryResult.empty())
@@ -175,14 +205,14 @@ public:
 		return false;
 	}
 
-	Snapshot[] getSnapshots(string filePath)
+	Snapshot[] getSnapshots(string label)
 	{
 		auto queryResult = sql(
 			q{
-				SELECT id, file_path, file_sha256, label, created_utc, source_length,
+				SELECT id, label, sha256, description, created_utc, source_length,
 					algo_min, algo_normal, algo_max, mask_s, mask_l, status
-				FROM snapshots WHERE file_path = ?
-			}, filePath
+				FROM snapshots WHERE label = ?
+			}, label
 		);
 
 		Snapshot[] snapshots;
@@ -192,9 +222,9 @@ public:
 			Snapshot snapshot;
 
 			snapshot.id = row["id"].to!long;
-			snapshot.filePath = row["file_path"].to!string;
-			snapshot.fileSha256 = cast(ubyte[]) row["file_sha256"].dup;
 			snapshot.label = row["label"].to!string;
+			snapshot.sha256 = cast(ubyte[]) row["sha256"].dup;
+			snapshot.description = row["description"].to!string;
 			snapshot.createdUtc = toDateTime(row["created_utc"].to!string);
 			snapshot.sourceLength = row["source_length"].to!long;
 			snapshot.algoMin = row["algo_min"].to!long;
@@ -214,7 +244,7 @@ public:
 	{
 		auto queryResult = sql(
 			q{
-				SELECT id, file_path, file_sha256, label, created_utc, source_length,
+				SELECT id, label, sha256, description, created_utc, source_length,
 					algo_min, algo_normal, algo_max, mask_s, mask_l, status
 				FROM snapshots WHERE id = ?
 			}, id
@@ -227,9 +257,9 @@ public:
 			auto data = queryResult.front();
 
 			snapshot.id = data["id"].to!long;
-			snapshot.filePath = data["file_path"].to!string;
-			snapshot.fileSha256 = cast(ubyte[]) data["file_sha256"].dup;
 			snapshot.label = data["label"].to!string;
+			snapshot.sha256 = cast(ubyte[]) data["sha256"].dup;
+			snapshot.description = data["description"].to!string;
 			snapshot.createdUtc = toDateTime(data["created_utc"].to!string);
 			snapshot.sourceLength = data["source_length"].to!long;
 			snapshot.algoMin = data["algo_min"].to!long;

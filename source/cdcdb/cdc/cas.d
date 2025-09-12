@@ -32,13 +32,15 @@ public:
 	this(
 		string database,
 		bool zstd = false,
+		int busyTimeout = 3000,
+		ubyte maxRetries = 3,
 		size_t minSize = 256,
 		size_t normalSize = 512,
 		size_t maxSize = 1024,
 		size_t maskS = 0xFF,
 		size_t maskL = 0x0F
 	) {
-		_db = new DBLite(database);
+		_db = new DBLite(database, busyTimeout, maxRetries);
 		_zstd = zstd;
 
 		_minSize = minSize;
@@ -50,20 +52,18 @@ public:
 		_cdc = new CDC(_minSize, _normalSize, _maxSize, _maskS, _maskL);
 	}
 
-	size_t newSnapshot(string filePath, const(ubyte)[] data, string label = string.init)
+	size_t newSnapshot(string label, const(ubyte)[] data, string description = string.init)
 	{
-		ubyte[32] hashSource = digest!SHA256(data);
+		ubyte[32] sha256 = digest!SHA256(data);
 
-		// Если последний снимок файла соответствует текущему
-		if (_db.isLast(filePath, hashSource)) return 0;
-		// Разбить на фрагменты
-		auto chunks = _cdc.split(data);
+		// Если последний снимок файла соответствует текущему состоянию
+		if (_db.isLast(label, sha256)) return 0;
 
 		Snapshot snapshot;
 
-		snapshot.filePath = filePath;
-		snapshot.fileSha256 = hashSource;
 		snapshot.label = label;
+		snapshot.sha256 = sha256;
+		snapshot.description = description;
 		snapshot.sourceLength = data.length;
 		snapshot.algoMin = _minSize;
 		snapshot.algoNormal = _normalSize;
@@ -91,6 +91,9 @@ public:
 		Blob blob;
 
 		blob.zstd = _zstd;
+
+		// Разбить на фрагменты
+		auto chunks = _cdc.split(data);
 
 		// Запись фрагментов в БД
 		foreach (chunk; chunks)
@@ -150,7 +153,7 @@ public:
 			enforce(chunk.size == bytes.length, "Оригинальный размер не соответствует ожидаемому");
 			content ~= bytes;
 		}
-		enforce(snapshot.fileSha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
+		enforce(snapshot.sha256 == digest!SHA256(content), "Хеш-сумма файла не совпадает");
 
 		return content;
 	}

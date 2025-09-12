@@ -6,12 +6,12 @@ auto _scheme = [
 		CREATE TABLE IF NOT EXISTS snapshots (
 			-- идентификатор снимка
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			-- путь к исходному файлу
-			file_path TEXT,
-			-- SHA-256 всего файла (BLOB(32))
-			file_sha256 BLOB NOT NULL CHECK (length(file_sha256) = 32),
 			-- метка/название снимка
-			label TEXT,
+			label TEXT NOT NULL,
+			-- SHA-256 всего файла (BLOB(32))
+			sha256 BLOB NOT NULL CHECK (length(sha256) = 32),
+			-- Комментарий/описание
+			description TEXT DEFAULT NULL,
 			-- время создания (UTC)
 			created_utc TEXT NOT NULL DEFAULT (CURRENT_TIMESTAMP),
 			-- длина исходного файла в байтах
@@ -88,9 +88,9 @@ auto _scheme = [
 		)
 	},
 	q{
-		-- Индекс для запросов вида: WHERE file_path=? AND file_sha256=?
+		-- Индекс для запросов вида: WHERE label=? AND sha256=?
 		CREATE INDEX IF NOT EXISTS idx_snapshots_path_sha
-			ON snapshots(file_path, file_sha256)
+			ON snapshots(label, sha256)
 	},
 	q{
 		-- Индекс для обратного поиска использования blob по sha256
@@ -203,7 +203,51 @@ auto _scheme = [
 		CREATE TRIGGER IF NOT EXISTS trg_sc_block_update
 		BEFORE UPDATE ON snapshot_chunks
 		BEGIN
-			SELECT RAISE(ABORT, "snapshot_chunks: UPDATE запрещён; используйте DELETE + INSERT");
+			SELECT RAISE(ABORT, "snapshot_chunks: UPDATE запрещён");
+		END
+	},
+	q{
+		-- ------------------------------------------------------------
+		-- snapshots: можно менять только status
+		-- ------------------------------------------------------------
+		CREATE TRIGGER IF NOT EXISTS trg_snapshots_block_update
+		BEFORE UPDATE ON snapshots
+		FOR EACH ROW
+		WHEN
+			NEW.id IS NOT OLD.id OR
+			NEW.label IS NOT OLD.label OR
+			NEW.sha256 IS NOT OLD.sha256 OR
+			NEW.description IS NOT OLD.description OR
+			NEW.created_utc IS NOT OLD.created_utc OR
+			NEW.source_length IS NOT OLD.source_length OR
+			NEW.algo_min IS NOT OLD.algo_min OR
+			NEW.algo_normal IS NOT OLD.algo_normal OR
+			NEW.algo_max IS NOT OLD.algo_max OR
+			NEW.mask_s IS NOT OLD.mask_s OR
+			NEW.mask_l IS NOT OLD.mask_l
+		-- status менять разрешено, поэтому его не сравниваем
+		BEGIN
+			SELECT RAISE(ABORT, "snapshots: разрешён UPDATE только поля status");
+		END
+	},
+	q{
+		-- ------------------------------------------------------------
+		-- blobs: можно менять только last_seen_utc и refcount
+		-- ------------------------------------------------------------
+		CREATE TRIGGER IF NOT EXISTS trg_blobs_block_update
+		BEFORE UPDATE ON blobs
+		FOR EACH ROW
+		WHEN
+			NEW.sha256 IS NOT OLD.sha256 OR
+			NEW.z_sha256 IS NOT OLD.z_sha256 OR
+			NEW.size IS NOT OLD.size OR
+			NEW.z_size IS NOT OLD.z_size OR
+			NEW.content IS NOT OLD.content OR
+			NEW.created_utc IS NOT OLD.created_utc OR
+			NEW.zstd IS NOT OLD.zstd
+		-- last_seen_utc и refcount менять разрешено
+		BEGIN
+			SELECT RAISE(ABORT, "blobs: разрешён UPDATE только полей last_seen_utc и refcount");
 		END
 	}
 ];
