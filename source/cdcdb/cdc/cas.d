@@ -3,16 +3,11 @@ module cdcdb.cdc.cas;
 import cdcdb.db;
 import cdcdb.cdc.core;
 
-import std.digest.sha : SHA256, digest;
-import std.format : format;
-
 import zstd;
 
+import std.digest.sha : SHA256, digest;
+import std.format : format;
 import std.exception : enforce;
-import std.stdio : writeln;
-import std.conv : to;
-
-import std.file : write;
 
 // Content-Addressable Storage (Контентно-адресуемая система хранения)
 // CAS-хранилище со снапшотами
@@ -54,6 +49,10 @@ public:
 
 	size_t newSnapshot(string label, const(ubyte)[] data, string description = string.init)
 	{
+		if (data.length == 0) {
+			throw new Exception("Данные имеют нулевой размер");
+		}
+
 		ubyte[32] sha256 = digest!SHA256(data);
 
 		// Если последний снимок файла соответствует текущему состоянию
@@ -132,9 +131,9 @@ public:
 		return idSnapshot;
 	}
 
-	Snapshot[] getSnapshotList(string filePath)
+	Snapshot[] getSnapshots(string label = "")
 	{
-		return _db.getSnapshots(filePath);
+		return _db.getSnapshots(label);
 	}
 
 	ubyte[] getSnapshotData(const ref Snapshot snapshot)

@@ -4,7 +4,6 @@ import cdcdb.db.types;
 
 import arsd.sqlite;
 
-import std.file : exists;
 import std.exception : enforce;
 import std.conv : to;
 import std.string : join, replace, toLower;
@@ -151,9 +150,11 @@ public:
 			snapshot.status.to!int
 		);
 
-		if (!queryResult.empty())
-			return queryResult.front()["id"].to!long;
-		return 0;
+		if (queryResult.empty()) {
+			throw new Exception("Ошибка при добавлении нового снимока в базу данных");
+		}
+
+		return queryResult.front()["id"].to!long;
 	}
 
 	void addBlob(Blob blob)
@@ -211,7 +212,7 @@ public:
 			q{
 				SELECT id, label, sha256, description, created_utc, source_length,
 					algo_min, algo_normal, algo_max, mask_s, mask_l, status
-				FROM snapshots WHERE label = ?
+				FROM snapshots WHERE (length(?) = 0 OR label = ?1);
 			}, label
 		);
 
