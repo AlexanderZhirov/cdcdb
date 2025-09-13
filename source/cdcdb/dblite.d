@@ -87,7 +87,7 @@ private:
 				if (msg.toLower.canFind("locked", "busy")) {
 					if (--tryNo == 0) {
 						throw new Exception(
-							"Не удалось выполнить подключение к базе данных после %d неудачных попыток: %s"
+							"Failed to connect to the database after %d failed attempts: %s"
 							.format(_maxRetries, msg)
 						);
 					}
@@ -99,7 +99,7 @@ private:
 		throw new Exception(msg);
 	}
 
-	// Проверка БД на наличие существующих в ней необходимых таблиц
+	// Check that the database contains the required tables; otherwise create them
 	void check()
 	{
 		SqliteResult queryResult = sql(
@@ -123,7 +123,7 @@ private:
 		}
 
 		enforce(missingTables.length == 0 || missingTables.length == 3,
-			"База данных повреждена. Отсутствуют таблицы: " ~ missingTables.join(", ")
+			"Database is corrupted. Missing tables: " ~ missingTables.join(", ")
 		);
 
 		if (missingTables.length == 3)
@@ -221,7 +221,7 @@ public:
 		);
 
 		if (queryResult.empty()) {
-			throw new Exception("Ошибка при добавлении нового снимока в базу данных");
+			throw new Exception("Error adding a new snapshot to the database");
 		}
 
 		return queryResult.front()["id"].to!long;

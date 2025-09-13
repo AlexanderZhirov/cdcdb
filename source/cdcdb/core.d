@@ -5,12 +5,12 @@ import std.digest.sha : SHA256, digest;
 struct Chunk
 {
 	size_t index; // 1..N
-	size_t offset; // смещение в исходном буфере
-	size_t size; // размер чанка
-	immutable(ubyte)[32] sha256; // hex(SHA-256) содержимого
+	size_t offset; // offset in the source buffer
+	size_t size; // chunk size
+	immutable(ubyte)[32] sha256; // hex(SHA-256) of the content
 }
 
-// Change Data Capture (Захват изменения данных)
+// Change Data Capture (CDC)
 final class CDC
 {
 private:
@@ -36,13 +36,13 @@ private:
 		ulong fingerprint = 0;
 		size_t index;
 
-		// инициализация без cut-check
+		// initialization without a cut-check
 		while (index < _minSize)
 		{
 			fingerprint = (fingerprint << 1) + _gear[src[index]];
 			++index;
 		}
-		// строгая маска
+		// strict mask
 		while (index < normalSize)
 		{
 			fingerprint = (fingerprint << 1) + _gear[src[index]];
@@ -50,7 +50,7 @@ private:
 				return index;
 			++index;
 		}
-		// слабая маска
+		// weak mask
 		while (index < size)
 		{
 			fingerprint = (fingerprint << 1) + _gear[src[index]];
@@ -65,7 +65,7 @@ public:
 	this(size_t minSize, size_t normalSize, size_t maxSize, ulong maskS, ulong maskL) @safe @nogc nothrow
 	{
 		assert(minSize > 0 && minSize < normalSize && normalSize < maxSize,
-			"Неверные размеры: требуется min < normal < max и min > 0");
+			"Invalid sizes: require min < normal < max and min > 0");
 		_minSize = minSize;
 		_normalSize = normalSize;
 		_maxSize = maxSize;
