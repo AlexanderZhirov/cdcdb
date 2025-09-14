@@ -112,18 +112,6 @@ public:
 		if (_db.isLast(label, sha256))
 			return null;
 
-		DBSnapshot dbSnapshot;
-
-		dbSnapshot.label = label;
-		dbSnapshot.sha256 = sha256;
-		dbSnapshot.description = description;
-		dbSnapshot.sourceLength = data.length;
-		dbSnapshot.algoMin = _minSize;
-		dbSnapshot.algoNormal = _normalSize;
-		dbSnapshot.algoMax = _maxSize;
-		dbSnapshot.maskS = _maskS;
-		dbSnapshot.maskL = _maskL;
-
 		_db.beginImmediate();
 
 		bool ok;
@@ -137,6 +125,20 @@ public:
 		{
 			_db.commit();
 		}
+
+		_db.addLabel(label);
+
+		DBSnapshot dbSnapshot;
+
+		dbSnapshot.label = label;
+		dbSnapshot.sha256 = sha256;
+		dbSnapshot.description = description;
+		dbSnapshot.sourceLength = data.length;
+		dbSnapshot.algoMin = _minSize;
+		dbSnapshot.algoNormal = _normalSize;
+		dbSnapshot.algoMax = _maxSize;
+		dbSnapshot.maskS = _maskS;
+		dbSnapshot.maskL = _maskL;
 
 		auto idSnapshot = _db.addSnapshot(dbSnapshot);
 

@@ -176,10 +176,14 @@ public:
 		auto queryResult = sql(
 			q{
 				SELECT COALESCE(
-					(SELECT (label = ? AND sha256 = ?)
-					FROM snapshots
-					ORDER BY created_utc DESC
-					LIMIT 1),
+					(
+						SELECT (s.sha256 = ?2)
+						FROM snapshots s
+						JOIN labels l ON l.id = s.label
+						WHERE l.name = ?1
+						ORDER BY s.created_utc DESC
+						LIMIT 1
+					),
 					0
 				) AS is_last;
 			}, label, sha256
@@ -205,7 +209,10 @@ public:
 					mask_s,
 					mask_l,
 					status
-				) VALUES (?,?,?,?,?,?,?,?,?,?)
+				)
+				SELECT
+					(SELECT id FROM labels WHERE name = ?),
+					?,?,?,?,?,?,?,?,?
 				RETURNING id
 			},
 			snapshot.label,
@@ -247,6 +254,18 @@ public:
 		return !queryResult.empty();
 	}
 
+	bool addLabel(string name)
+	{
+		auto queryResult = sql(
+			q{
+				INSERT INTO labels (name) VALUES (?)
+				ON CONFLICT(name) DO NOTHING
+			}, name
+		);
+
+		return !queryResult.empty();
+	}
+
 	bool addSnapshotChunk(DBSnapshotChunk snapshotChunk)
 	{
 		auto queryResult = sql(
@@ -268,9 +287,22 @@ public:
 	{
 		auto queryResult = sql(
 			q{
-				SELECT id, label, sha256, description, created_utc, source_length,
-					algo_min, algo_normal, algo_max, mask_s, mask_l, status
-				FROM snapshots WHERE id = ?
+				SELECT
+					s.id,
+					l.name label,
+					s.sha256,
+					s.description,
+					s.created_utc,
+					s.source_length,
+					s.algo_min,
+					s.algo_normal,
+					s.algo_max,
+					s.mask_s,
+					s.mask_l,
+					s.status
+				FROM snapshots s
+				JOIN labels l ON l.id = s.label
+				WHERE s.id = ?
 			}, id
 		);
 
@@ -301,9 +333,22 @@ public:
 	{
 		auto queryResult = sql(
 			q{
-				SELECT id, label, sha256, description, created_utc, source_length,
-					algo_min, algo_normal, algo_max, mask_s, mask_l, status
-				FROM snapshots WHERE (length(?) = 0 OR label = ?1);
+				SELECT
+					s.id,
+					l.name label,
+					s.sha256,
+					s.description,
+					s.created_utc,
+					s.source_length,
+					s.algo_min,
+					s.algo_normal,
+					s.algo_max,
+					s.mask_s,
+					s.mask_l,
+					s.status
+				FROM snapshots s
+				JOIN labels l ON l.id = s.label AND (length(?) = 0 OR l.name = ?1)
+				ORDER BY s.created_utc, s.id;
 			}, label
 		);
 
@@ -379,7 +424,7 @@ public:
 		auto queryResult = sql(
 			q{
 				DELETE FROM snapshots
-				WHERE label = ?
+				WHERE label = (SELECT id FROM labels WHERE name = ?)
 				RETURNING 1;
 			}, label);
 

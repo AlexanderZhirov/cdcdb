@@ -1,13 +1,29 @@
 auto _scheme = [
 	q{
 		-- ------------------------------------------------------------
+		-- Таблица labels
+		-- ------------------------------------------------------------
+		CREATE TABLE IF NOT EXISTS labels (
+			-- идентификатор метки
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			-- имя метки
+			name TEXT NOT NULL UNIQUE
+		)
+	},
+	q{
+		-- Индекс по имени метки
+		CREATE INDEX IF NOT EXISTS idx_labels_name
+			ON labels(name)
+	},
+	q{
+		-- ------------------------------------------------------------
 		-- Таблица snapshots
 		-- ------------------------------------------------------------
 		CREATE TABLE IF NOT EXISTS snapshots (
 			-- идентификатор снимка
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			-- метка/название снимка
-			label TEXT NOT NULL,
+			label INTEGER NOT NULL,
 			-- SHA-256 всего файла (BLOB(32))
 			sha256 BLOB NOT NULL CHECK (length(sha256) = 32),
 			-- Комментарий/описание
@@ -28,7 +44,11 @@ auto _scheme = [
 			mask_l INTEGER NOT NULL,
 			-- 0=pending, 1=ready
 			status INTEGER NOT NULL DEFAULT 0
-				CHECK (status IN (0,1))
+				CHECK (status IN (0,1)),
+			FOREIGN KEY (label)
+				REFERENCES labels(id)
+				ON UPDATE CASCADE
+				ON DELETE CASCADE
 		)
 	},
 	q{
@@ -249,5 +269,20 @@ auto _scheme = [
 		BEGIN
 			SELECT RAISE(ABORT, "blobs: разрешён UPDATE только полей last_seen_utc и refcount");
 		END
+	},
+	q{
+		-- ------------------------------------------------------------
+		-- Удаление записи из labels, если удалён последний snapshot
+		-- ------------------------------------------------------------
+		CREATE TRIGGER IF NOT EXISTS trg_snapshots_delete_label
+		AFTER DELETE ON snapshots
+		FOR EACH ROW
+		BEGIN
+			DELETE FROM labels
+			WHERE id = OLD.label
+			AND NOT EXISTS (
+				SELECT 1 FROM snapshots WHERE label = OLD.label
+			);
+		END;
 	}
 ];
