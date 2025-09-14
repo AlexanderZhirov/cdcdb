@@ -92,7 +92,7 @@ chmod +x ./tools/gen.d
 
 	```json
 	"dependencies": {
-		"cdcdb": "~>0.1.0"
+		"cdcdb": "~>0.1"
 	}
 	```
 * **Build**: `dub build`.

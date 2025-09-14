@@ -89,7 +89,7 @@ chmod +x ./tools/gen.d
 - **В `dub.json`**:
 	```json
 	"dependencies": {
-		"cdcdb": "~>0.1.0"
+		"cdcdb": "~>0.1"
 	}
 	```
 - **Сборка**: `dub build`.

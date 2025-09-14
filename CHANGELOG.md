@@ -1,5 +1,11 @@
 # Changelog
 
+## [0.1.1] - 2025-09-14
+### Added
+- Table `labels` for snapshot labels.
+### Fixed
+- Improved data integrity with label normalization.
+
 ## [0.1.0] — 2025-09-13
 ### Added
 - SQLite-backed snapshot library with content-defined chunking (FastCDC).
